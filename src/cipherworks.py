@@ -77,6 +77,22 @@ def mnemos_auto(cfg):
     mem["history"].append({"ts": datetime.datetime.now().isoformat(), "evt": "auto-persist"})
     save_config({**cfg, "mnemos": mem})
 
+def mnemos_recall(cfg):
+    if not check_license(cfg):
+        return "Pro feature: MNEMOS recall requires a license."
+    mem = cfg.get("mnemos", {"history": []})
+    if not mem["history"]:
+        return "No persistent MNEMOS memory."
+    return "\n".join(f"{x['ts']}: {x['evt']}" for x in mem["history"])
+
+def mnemos_export(cfg, path="mnemos_dump.json"):
+    if not check_license(cfg):
+        return "Pro feature: MNEMOS export requires a license."
+    mem = cfg.get("mnemos", {"history": []})
+    with open(path, "w") as f:
+        json.dump(mem, f, indent=2)
+    return f"MNEMOS memory exported to {path}"
+
 def main_cli():
     import argparse
     parser = argparse.ArgumentParser(description="CipherWorks / THRUST CLI")
@@ -92,9 +108,19 @@ def main_cli():
     parser.add_argument("--telemetry", action='store_true')
     parser.add_argument("--circuitnet", action='store_true')
     parser.add_argument("--mnemos", action='store_true')
+    parser.add_argument("--recall", action='store_true')
+    parser.add_argument("--export", action='store_true')
     args = parser.parse_args()
     cfg = load_config()
     mnemos_auto(cfg)
+    if args.recall:
+        out = mnemos_recall(cfg)
+        cprint(out, "magenta")
+        return
+    if args.export:
+        out = mnemos_export(cfg)
+        cprint(out, "green" if "exported" in out else "red")
+        return
     if args.update:
         cprint("Checking for latest CipherWorks release...", "cyan")
         res = check_for_update()
@@ -112,7 +138,7 @@ def run_gui(cfg):
     mnemos_auto(cfg)
     app = tk.Tk()
     app.title("CipherWorks Control Panel")
-    app.geometry("520x540")
+    app.geometry("520x560")
     app.resizable(False, False)
     font_title = ("Segoe UI", 20, "bold")
     font_label = ("Segoe UI", 10, "bold")
@@ -187,6 +213,12 @@ def run_gui(cfg):
         res = launch_mnemos(cfg)
         messagebox.showinfo("MNEMOS", res)
         log_event("GUI: MNEMOS kernel launch")
+    def mnemos_recall_gui():
+        out = mnemos_recall(cfg)
+        messagebox.showinfo("MNEMOS Recall", out)
+    def mnemos_export_gui():
+        out = mnemos_export(cfg)
+        messagebox.showinfo("MNEMOS Export", out)
     btns = [
         ("Ignite", ignite, "#fff41f"),
         ("Mute", mute, "#bfff67"),
@@ -207,7 +239,9 @@ def run_gui(cfg):
     tk.Button(prof, text="FLARE Telemetry", command=flare_telemetry, font=font_btn, bg="#ddeaff", width=14).grid(row=1, column=0, columnspan=2, pady=6)
     tk.Button(prof, text="Log Telemetry", command=telemetry_gui, font=font_btn, bg="#d9ffe7", width=14).grid(row=1, column=2, columnspan=2, pady=6)
     mnemos_state = tk.NORMAL if pro_enabled else tk.DISABLED
-    tk.Button(app, text="Launch MNEMOS", command=mnemos_gui, font=font_btn, bg="#ffd2e1", width=22, state=mnemos_state).pack(pady=10)
+    tk.Button(app, text="Launch MNEMOS", command=mnemos_gui, font=font_btn, bg="#ffd2e1", width=22, state=mnemos_state).pack(pady=5)
+    tk.Button(app, text="Recall MNEMOS", command=mnemos_recall_gui, font=font_btn, bg="#e1ffea", width=22, state=mnemos_state).pack(pady=2)
+    tk.Button(app, text="Export MNEMOS", command=mnemos_export_gui, font=font_btn, bg="#e2e3ff", width=22, state=mnemos_state).pack(pady=2)
     app.mainloop()
 
 if __name__ == "__main__":
