@@ -1,0 +1,5 @@
+pyinstaller
+psutil
+requests
+rich
+# Add any other project-specific dependencies below
