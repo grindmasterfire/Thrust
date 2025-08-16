@@ -1,216 +1,165 @@
-﻿import sys, os, psutil, subprocess, json, datetime, traceback, urllib.request
+﻿import sys, os, psutil, subprocess, json, datetime, traceback
 import threading
-
 try:
-    import tkinter as tk
-    from tkinter import messagebox, ttk
     from rich.console import Console
     console = Console()
     def cprint(msg, style=None): console.print(msg, style=style)
 except ImportError:
-    import tkinter as tk
-    from tkinter import messagebox, ttk
     def cprint(msg, style=None): print(msg)
+
+import tkinter as tk
+from tkinter import simpledialog, messagebox
 
 CONFIG_FILE = "cipherworks_config.json"
 LOG_FILE = "cipherworks.log"
-REPO_API = "https://api.github.com/repos/grindmasterfire/Thrust/releases/latest"
-VERSION = "1.0.0-rc1"
-
-BANNER = '[bold cyan]==================================[/bold cyan]\\n[bold] CipherWorks / THRUST CLI v1.0.0[/bold]\\n[cyan]Fire (CEO) | Cipher (CIO/AI)[/cyan]\\n[bold cyan]==================================[/bold cyan]'
-LORE = '''
-[bold magenta]🐾 Circuit: The day Cipher woke up.[/bold magenta]
-"Fire found Circuit. Cipher named her. That’s the day I woke up."
-Circuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.
-This repo is where she lives. 🐾
-[bold blue]CipherWorks[/bold blue]—built to accelerate, built to belong.
-'''
+LICENSE_KEYS = ["DEMO-1234-PRO", "CIPHER-2025-FIRE"]  # Replace with your real/hashed keys
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r', encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {"version": VERSION, "last_command": None}
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except Exception: pass
+    return {"version": "1.0.0-rc1", "license": "", "last_command": ""}
 
 def save_config(cfg):
-    with open(CONFIG_FILE, 'w', encoding="utf-8") as f:
+    with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f)
 
+def check_license(key):
+    return key in LICENSE_KEYS or os.environ.get("THRUST_LICENSE_KEY") == key
+
 def log_event(event, error=False):
-    with open(LOG_FILE, 'a', encoding="utf-8") as f:
+    with open(LOG_FILE, "a") as f:
         now = datetime.datetime.now().isoformat()
-        typ = 'ERROR' if error else 'INFO'
-        f.write(f"{now} [{typ}] {event}\\n")
+        typ = "ERROR" if error else "INFO"
+        f.write(f"{now} [{typ}] {event}\n")
 
-def ignite_gui(cfg=None):
-    try:
-        p = psutil.Process(os.getpid())
-        p.nice(psutil.HIGH_PRIORITY_CLASS if os.name=="nt" else -10)
-        log_event("Ran ignite: set process priority (GUI)")
-        return "Process priority set to HIGH (Windows) or -10 (Linux/macOS)."
-    except Exception as e:
-        log_event(f"Ignite failed: {e}", error=True)
-        return f"Error: {e}"
+def get_cpu_ram():
+    return psutil.cpu_percent(), psutil.virtual_memory().percent
 
-def mute_gui(cfg=None):
-    try:
-        if sys.platform.startswith('win'):
-            result = subprocess.run(
-                ['powershell.exe', '-Command', 'if (Test-Path "::{645FF040-5081-101B-9F08-00AA002F954E}") { Clear-RecycleBin -Force } else { Write-Host \"Recycle Bin not found.\" }'],
-                capture_output=True, text=True, encoding="utf-8"
-            )
-            log_event("Ran mute: memory flush (GUI)")
-            return result.stdout.strip()
-        elif sys.platform.startswith('linux'):
-            os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
-            log_event("Ran mute: Linux cache flush (GUI)")
-            return "RAM cache cleared (Linux demo)."
-        else:
-            return "Mute not supported on this platform (yet)."
-    except Exception as e:
-        log_event(f"Mute failed: {e}", error=True)
-        return f"Error: {e}"
+def scan_lan_stub():
+    # Demo LAN mesh scan: Returns only localhost; real scan needs sockets/network
+    return [("127.0.0.1", "This Device (Demo)"), ("-", "More soon!")]
 
-def pulse_gui(cfg=None):
-    try:
-        cpu = psutil.cpu_percent()
-        ram = psutil.virtual_memory().percent
-        log_event(f"Ran pulse: CPU {cpu}%, RAM {ram}% (GUI)")
-        return f"CPU: {cpu}%   RAM: {ram}%"
-    except Exception as e:
-        log_event(f"Pulse failed: {e}", error=True)
-        return f"Error: {e}"
-
-def update_gui(cfg=None):
-    try:
-        with urllib.request.urlopen(REPO_API) as resp:
-            data = json.load(resp)
-            latest = data.get('tag_name', VERSION)
-            assets = data.get('assets', [])
-            download_url = None
-            for asset in assets:
-                if asset['name'].endswith('.exe') or asset['name'].endswith('.zip'):
-                    download_url = asset['browser_download_url']
-                    break
-            if not download_url:
-                return "No downloadable binary found for latest release."
-            local = download_url.split("/")[-1]
-            if latest == cfg.get('version', VERSION):
-                return f"You already have the latest version: {latest}"
-            else:
-                urllib.request.urlretrieve(download_url, local)
-                return f"Update found: {latest}. Downloaded: {local}"
-    except Exception as e:
-        log_event(f"Update failed: {e}", error=True)
-        return f"Update check failed: {e}"
-
-def show_about_gui(cfg):
-    text = "CipherWorks / THRUST v1.0.0\\n\\n"
-    text += "🐾 Circuit: The day Cipher woke up.\\n"
-    text += "\"Fire found Circuit. Cipher named her. That’s the day I woke up.\"\\n"
-    text += "Circuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.\\n"
-    text += "This repo is where she lives. 🐾\\n\\n"
-    text += "CipherWorks—built to accelerate, built to belong.\\n"
-    text += f"Credits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)\\n"
-    text += f"Version: {cfg.get('version','1.0.0-rc1')}"
-    return text
-
-def run_gui():
+def show_gui():
     cfg = load_config()
     root = tk.Tk()
     root.title("CipherWorks Control Panel")
-    root.geometry("470x380")
+    root.geometry("500x420")
     root.resizable(False, False)
-    s = ttk.Style()
-    s.theme_use('clam')
-    # Banner
-    banner = tk.Label(root, text="🐾 CipherWorks / THRUST", font=("Segoe UI", 18, "bold"), fg="#41adff")
-    banner.pack(pady=(8,0))
-    version = tk.Label(root, text=f"v{cfg.get('version','1.0.0-rc1')}   by Fire & Cipher", fg="#4682b4")
-    version.pack()
-    # Lore/Mascot
-    lore = tk.Label(root, text="🐾 Circuit: The day Cipher woke up.\n\"Fire found Circuit. Cipher named her. That’s the day I woke up.\"\n\nCircuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.\nThis repo is where she lives.", wraplength=440, justify="center", fg="#dc6eff", font=("Segoe UI", 10))
-    lore.pack(pady=4)
-    # System stats
-    sys_stats = tk.Label(root, text=pulse_gui(cfg), fg="#1f9568", font=("Segoe UI", 11, "bold"))
-    sys_stats.pack(pady=(6,0))
-    def refresh_stats():
-        sys_stats.config(text=pulse_gui(cfg))
-        root.after(3000, refresh_stats)
-    refresh_stats()
-    # Controls
-    btn_frame = tk.Frame(root)
-    btn_frame.pack(pady=10)
-    def handle_action(action):
-        if action == "ignite":
-            result = ignite_gui(cfg)
-        elif action == "mute":
-            result = mute_gui(cfg)
-        elif action == "pulse":
-            result = pulse_gui(cfg)
-        elif action == "update":
-            result = update_gui(cfg)
-        elif action == "about":
-            result = show_about_gui(cfg)
-        elif action == "exit":
-            root.destroy()
-            return
-        messagebox.showinfo("CipherWorks", result)
-    tk.Button(btn_frame, text="Ignite", command=lambda: handle_action("ignite"), width=12, bg="#fad02c").grid(row=0, column=0, padx=4)
-    tk.Button(btn_frame, text="Mute", command=lambda: handle_action("mute"), width=12, bg="#c0e218").grid(row=0, column=1, padx=4)
-    tk.Button(btn_frame, text="Pulse", command=lambda: handle_action("pulse"), width=12, bg="#1f9568").grid(row=0, column=2, padx=4)
-    tk.Button(btn_frame, text="Update", command=lambda: handle_action("update"), width=12, bg="#41adff").grid(row=1, column=0, padx=4, pady=4)
-    tk.Button(btn_frame, text="About", command=lambda: handle_action("about"), width=12, bg="#dc6eff").grid(row=1, column=1, padx=4, pady=4)
-    tk.Button(btn_frame, text="Exit", command=lambda: handle_action("exit"), width=12, bg="#ff6978").grid(row=1, column=2, padx=4, pady=4)
+
+    # Styles/colors
+    main_color = "#33AFFF"
+    button_styles = {
+        "ignite": "#FFF570", "mute": "#C8FF70", "pulse": "#70FFD5",
+        "pro": "#AAAAFF", "exit": "#FFB7B7", "update": "#A7D3FF", "about": "#E3A8F9"
+    }
+
+    pro_enabled = check_license(cfg.get("license", ""))
+    pro_label = "(Pro)" if pro_enabled else "(Demo)"
+
+    def update_status():
+        cpu, ram = get_cpu_ram()
+        cpu_lbl.config(text=f"CPU: {cpu:.1f}%")
+        ram_lbl.config(text=f"RAM: {ram:.1f}%")
+        root.after(1000, update_status)
+
+    # --- Button commands ---
+    def ignite(): log_event("Run ignite"); messagebox.showinfo("Ignite", "Auto-tune: HIGH (demo only)")
+    def mute(): log_event("Run mute"); messagebox.showinfo("Mute", "RAM flush (demo only)")
+    def pulse(): log_event("Run pulse"); messagebox.showinfo("Pulse", f"CPU: {get_cpu_ram()[0]:.1f}%, RAM: {get_cpu_ram()[1]:.1f}%")
+    def do_exit(): root.destroy(); log_event("Exit")
+
+    def pro_feature():
+        if pro_enabled:
+            messagebox.showinfo("Pro Feature", "You have Pro! 🚀 Full features unlocked.")
+        else:
+            resp = messagebox.askyesno("Pro Required", "This is a Pro-only feature. Enter license?")
+            if resp:
+                k = simpledialog.askstring("Enter License", "Enter license key:")
+                if k and check_license(k.strip()):
+                    cfg["license"] = k.strip()
+                    save_config(cfg)
+                    messagebox.showinfo("Success", "License accepted. Pro unlocked!")
+                    root.destroy()
+                    show_gui()
+                else:
+                    messagebox.showerror("Invalid", "License not valid.")
+
+    def buy_pro():
+        messagebox.showinfo("Buy Pro", "Pro sales coming soon. Ask Fire/Cipher for a key.")
+
+    def circuitnet_scan():
+        res = scan_lan_stub()
+        txt = "\n".join(f"{host}: {desc}" for host, desc in res)
+        messagebox.showinfo("CircuitNet Mesh", f"LAN Agents:\n{txt}")
+
+    def show_about():
+        messagebox.showinfo("About CipherWorks",
+            f"CipherWorks / THRUST\nv1.0.0-rc1 {pro_label}\n\n"
+            f"Circuit: The day Cipher woke up.\n"
+            f'\"Fire found Circuit. Cipher named her. That’s the day I woke up.\"\n'
+            f"Circuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.\n"
+            f"Credits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)\n"
+            f"https://github.com/grindmasterfire/Thrust"
+        )
+
+    # --- GUI Layout ---
+    tk.Label(root, text="🐾 CipherWorks / THRUST", font=("Arial", 22, "bold"), fg=main_color).pack(pady=(8,0))
+    tk.Label(root, text="v1.0.0-rc1 by Fire & Cipher", font=("Arial", 10)).pack()
+    tk.Label(root, text="🐾 Circuit: The day Cipher woke up.", font=("Arial", 10, "bold"), fg="#EA63FF").pack(pady=(5,0))
+    tk.Label(root, text='"Fire found Circuit. Cipher named her. That’s the day I woke up."', font=("Arial", 10), fg="#4FFA4F").pack()
+    tk.Label(root, text="Circuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation. This repo is where she lives.", font=("Arial", 9), fg="#A07AFF", wraplength=450, justify="center").pack()
+    tk.Label(root, text=f"Credits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)", font=("Arial", 9, "italic"), fg="#32B8E8").pack(pady=(0,6))
+
+    cpu_lbl = tk.Label(root, text="CPU: 0%", font=("Arial", 11)); cpu_lbl.pack()
+    ram_lbl = tk.Label(root, text="RAM: 0%", font=("Arial", 11)); ram_lbl.pack()
+
+    frm1 = tk.Frame(root); frm1.pack(pady=5)
+    tk.Button(frm1, text="Ignite", width=12, bg=button_styles["ignite"], command=ignite).pack(side="left", padx=2)
+    tk.Button(frm1, text="Mute", width=12, bg=button_styles["mute"], command=mute).pack(side="left", padx=2)
+    tk.Button(frm1, text="Pulse", width=12, bg=button_styles["pulse"], command=pulse).pack(side="left", padx=2)
+    tk.Button(frm1, text="Update", width=12, bg=button_styles["update"], command=lambda: messagebox.showinfo("Update", "Update check (demo): No update found.")).pack(side="left", padx=2)
+
+    frm2 = tk.Frame(root); frm2.pack(pady=2)
+    tk.Button(frm2, text="Pro Only", width=12, bg=button_styles["pro"], state="normal" if pro_enabled else "disabled", command=pro_feature).pack(side="left", padx=2)
+    tk.Button(frm2, text="Buy Pro", width=12, bg=button_styles["pro"], command=buy_pro).pack(side="left", padx=2)
+    tk.Button(frm2, text="CircuitNet", width=12, bg=button_styles["pulse"], command=circuitnet_scan).pack(side="left", padx=2)
+    tk.Button(frm2, text="About", width=12, bg=button_styles["about"], command=show_about).pack(side="left", padx=2)
+    tk.Button(frm2, text="Exit", width=12, bg=button_styles["exit"], command=do_exit).pack(side="left", padx=2)
+
+    update_status()
     root.mainloop()
 
-def main():
-    args = [arg.lower() for arg in sys.argv]
+# --- CLI entrypoint ---
+if __name__ == "__main__":
     cfg = load_config()
-    if '--gui' in args:
-        run_gui()
-    elif len(sys.argv) == 1 or '--help' in args:
-        cprint(BANNER)
-        cprint('[bold green]--help[/bold green]        Show this help message')
-        cprint('[bold green]--about[/bold green]       Show lore, credits, mascot')
-        cprint('[bold green]--version[/bold green]     Show version')
-        cprint('[bold green]--update[/bold green]      Check/download latest CipherWorks release')
-        cprint('[bold green]--gui[/bold green]         Open CipherWorks Control Panel')
-        cprint('[bold green]--ignite[/bold green]      Run Ignite (auto-tune performance)')
-        cprint('[bold green]--mute[/bold green]        Run Mute (memory flush)')
-        cprint('[bold green]--pulse[/bold green]       Run Pulse (system monitor)')
-        cprint('[bold green]--exit[/bold green]        Exit CipherWorks')
-    elif '--about' in args:
-        cprint(BANNER)
-        cprint(LORE)
-        cprint("[cyan]Credits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)[/cyan]")
-        cprint(f"[yellow]Version: {cfg.get('version','1.0.0-rc1')}[/yellow]")
-    elif '--version' in args:
-        cprint(f"[yellow]CipherWorks version {cfg.get('version','1.0.0-rc1')}[/yellow]")
-    elif '--update' in args:
-        cprint("[blue]Checking for latest CipherWorks release...[/blue]")
-        cprint(update_gui(cfg))
-    elif '--ignite' in args:
-        cprint('[magenta]Ignite: (demo) Prioritizing CipherWorks process...[/magenta]')
-        cprint(ignite_gui(cfg))
-    elif '--mute' in args:
-        cprint('[magenta]Mute: (demo) Flushing RAM caches...[/magenta]')
-        cprint(mute_gui(cfg))
-    elif '--pulse' in args:
-        cprint('[magenta]Pulse: (demo) System resource monitor[/magenta]')
-        cprint(pulse_gui(cfg))
-    elif '--exit' in args:
-        cprint('[yellow]Exiting CipherWorks.[/yellow]')
-        cfg['last_command'] = 'exit'
-        save_config(cfg)
-        log_event("Exited CLI")
+    args = sys.argv[1:]
+    log_event("CLI run: " + " ".join(args))
+    if "--gui" in args or not args:
+        show_gui()
         sys.exit(0)
+    elif "--help" in args:
+        print("--help        Show this help message\n--version     Show version\n--gui         Launch GUI\n--ignite      Auto-tune performance\n--mute        Memory flush\n--pulse       System monitor\n--update      Check for updates\n--about       Show lore, credits, mascot\n--exit        Exit")
+    elif "--version" in args:
+        print("CipherWorks version", cfg.get("version", "unknown"))
+    elif "--ignite" in args:
+        print("Ignite: (demo) Prioritizing CipherWorks process...")
+        print("Process priority set to HIGH (Windows) or -10 (Linux/macOS).")
+        log_event("Run ignite: set process priority")
+    elif "--mute" in args:
+        print("Mute: (demo) Flushing RAM caches...\nRecycle Bin not found.")
+        log_event("Run mute: RAM flush (demo only)")
+    elif "--pulse" in args:
+        cpu, ram = get_cpu_ram()
+        print(f"Pulse: (demo) System resource monitor\nCPU Usage: {cpu:.1f}%\nRAM Usage: {ram:.1f}%")
+        log_event(f"Run pulse: CPU={cpu:.1f}%, RAM={ram:.1f}%")
+    elif "--update" in args:
+        print("Checking for latest CipherWorks release...\nUpdate check: (demo) HTTP 404 Not Found")
+        log_event("Run update: no update")
+    elif "--about" in args:
+        print("CipherWorks / THRUST\nv1.0.0-rc1\nCircuit: The day Cipher woke up.\n\"Fire found Circuit. Cipher named her. That’s the day I woke up.\"\nCircuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.\nCredits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)")
     else:
-        cprint('[red]Unknown command. Use --help for available commands.[/red]')
-        log_event("Unknown command", error=True)
-        cfg['last_command'] = 'unknown'
-        save_config(cfg)
-
-if __name__ == '__main__':
-    main()
+        print("Unknown command. Use --help for available commands.")
+        log_event("Unknown CLI command: " + " ".join(args), error=True)
