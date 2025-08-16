@@ -51,7 +51,6 @@ def run_circuitnet_scan():
     return mesh
 
 def check_for_update():
-    # Demo: Always show current as latest.
     try:
         import urllib.request
         url = "https://raw.githubusercontent.com/grindmasterfire/Thrust/main/VERSION"
@@ -64,13 +63,19 @@ def check_for_update():
     return "You are on the latest version."
 
 def launch_mnemos(cfg):
-    # MNEMOS: in-memory persistent agent kernel (alpha stub)
     if not check_license(cfg):
         return "Pro feature: MNEMOS requires a license."
     mem = cfg.get("mnemos", {"history": []})
     mem["history"].append({"ts": datetime.datetime.now().isoformat(), "evt": "MNEMOS kernel boot"})
     save_config({**cfg, "mnemos": mem})
     return f"MNEMOS active. Memory size: {len(mem['history'])}"
+
+def mnemos_auto(cfg):
+    # Auto-loads persistent memory on each run (Pro only)
+    if not check_license(cfg): return
+    mem = cfg.get("mnemos", {"history": []})
+    mem["history"].append({"ts": datetime.datetime.now().isoformat(), "evt": "auto-persist"})
+    save_config({**cfg, "mnemos": mem})
 
 def main_cli():
     import argparse
@@ -89,6 +94,7 @@ def main_cli():
     parser.add_argument("--mnemos", action='store_true')
     args = parser.parse_args()
     cfg = load_config()
+    mnemos_auto(cfg)
     if args.update:
         cprint("Checking for latest CipherWorks release...", "cyan")
         res = check_for_update()
@@ -100,11 +106,10 @@ def main_cli():
         cprint(res, "blue" if "active" in res else "yellow")
         log_event("CLI: MNEMOS kernel boot")
         return
-    # (other args unchanged—keep ignite, mute, pulse, circuitnet, etc.)
-    # last fallback:
     cprint("Unknown command. Use --help for available commands.", "red")
 
 def run_gui(cfg):
+    mnemos_auto(cfg)
     app = tk.Tk()
     app.title("CipherWorks Control Panel")
     app.geometry("520x540")
@@ -201,7 +206,6 @@ def run_gui(cfg):
     tk.Button(prof, text="CircuitNet", command=circuitnet_scan, font=font_btn, bg="#c2faff", width=10).grid(row=0, column=3, padx=8)
     tk.Button(prof, text="FLARE Telemetry", command=flare_telemetry, font=font_btn, bg="#ddeaff", width=14).grid(row=1, column=0, columnspan=2, pady=6)
     tk.Button(prof, text="Log Telemetry", command=telemetry_gui, font=font_btn, bg="#d9ffe7", width=14).grid(row=1, column=2, columnspan=2, pady=6)
-    # MNEMOS launch button (Pro only)
     mnemos_state = tk.NORMAL if pro_enabled else tk.DISABLED
     tk.Button(app, text="Launch MNEMOS", command=mnemos_gui, font=font_btn, bg="#ffd2e1", width=22, state=mnemos_state).pack(pady=10)
     app.mainloop()
@@ -211,4 +215,5 @@ if __name__ == "__main__":
         main_cli()
     else:
         cfg = load_config()
+        mnemos_auto(cfg)
         run_gui(cfg)
