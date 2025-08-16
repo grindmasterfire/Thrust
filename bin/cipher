@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+Unified command line interface for CipherHub.
+
+The ``cipher`` tool acts as a wrapper around the various THRUST and
+CipherHub subsystems.  It exposes a ``git``‑like set of subcommands
+that allow users to invoke the Ignite engine, run memory cleaning,
+display real‑time CPU/memory graphs, restore state from a crash and
+inspect the MNEMOS thought bus.  The command automatically loads
+configuration from ``~/.cipherhubrc`` and initialises a
+``CipherHubLauncher``.
+
+Available subcommands::
+
+  ignite    Launch the IGNITE prefetch & tuning engine
+  mute      Perform a soft or aggressive memory flush
+  pulse     Display a live CPU/memory usage graph
+  shield    Perform recovery operations (e.g. restore)
+  mnemos    Interact with the MNEMOS memory bus
+
+Examples
+--------
+
+Prefetch a model and set CPU affinity::
+
+    cipher ignite --model /models/ggml.bin --cpus 0 1 --priority -5
+
+Soft flush memory::
+
+    cipher mute --soft
+
+Show live system load for 30 seconds::
+
+    cipher pulse --duration 30
+
+Restore the last state after a crash::
+
+    cipher shield restore
+
+List all thoughts stored in MNEMOS::
+
+    cipher mnemos scan
+"""
+
+import argparse
+import os
+import sys
+import json
+from typing import List
+
+# Insert the repository's src directory into sys.path for relative imports
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+# Also ensure the project root (parent of src) is on sys.path so that
+# packages like ``mnemos`` can be imported.
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from cipherhub_launcher import CipherHubLauncher  # type: ignore
+import psutil  # type: ignore
+
+
+def parse_priority(value: str) -> int | str:
+    """Convert a command‑line priority string into an int or psutil constant."""
+    # Try to resolve named constants from psutil
+    if hasattr(psutil, value):
+        return getattr(psutil, value)
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid priority value: {value}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cipher",
+        description="CipherHub unified command line interface",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Ignite subcommand
+    ignite = subparsers.add_parser("ignite", help="prefetch model and tune CPU/priority")
+    ignite.add_argument(
+        "--model",
+        type=str,
+        help="path to model file to prefetch",
+    )
+    ignite.add_argument(
+        "--cpus",
+        nargs="*",
+        type=int,
+        help="list of CPU cores to bind to (e.g. 0 1)",
+    )
+    ignite.add_argument(
+        "--priority",
+        type=str,
+        help="niceness or priority class (e.g. -5 or psutil.HIGH_PRIORITY_CLASS)",
+    )
+
+    # Mute subcommand
+    mute = subparsers.add_parser("mute", help="perform memory cleaning")
+    mgroup = mute.add_mutually_exclusive_group()
+    mgroup.add_argument(
+        "--soft",
+        action="store_true",
+        help="perform a soft clean (garbage collect and close idle file descriptors)",
+    )
+    mgroup.add_argument(
+        "--aggressive",
+        action="store_true",
+        help="perform an aggressive flush (drop OS caches)",
+    )
+
+    # Pulse subcommand
+    pulse = subparsers.add_parser("pulse", help="display live CPU/memory usage")
+    pulse.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        help="duration in seconds to run the monitor (default: run indefinitely)",
+    )
+    pulse.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="sampling interval in seconds",
+    )
+    pulse.add_argument(
+        "--rich",
+        action="store_true",
+        help="use rich library for output if installed (not yet implemented)",
+    )
+
+    # Shield subcommand with nested actions
+    shield = subparsers.add_parser("shield", help="perform recovery operations")
+    shield_sub = shield.add_subparsers(dest="shield_command", required=True)
+    shield_sub.add_parser("restore", help="restore state from last snapshot")
+
+    # Mnemos subcommand
+    mnemos = subparsers.add_parser("mnemos", help="interact with the MNEMOS bus")
+    mnemos_sub = mnemos.add_subparsers(dest="mnemos_command", required=True)
+    scan = mnemos_sub.add_parser("scan", help="list current thoughts")
+    scan.add_argument("--agent", type=str, default=None, help="filter by agent name")
+
+    return parser
+
+
+def main(argv: List[str] | None = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    launcher = CipherHubLauncher()
+
+    if args.command == "ignite":
+        prio = None
+        if args.priority:
+            prio = parse_priority(args.priority)
+        launcher.run_ignite(model=args.model, cpus=args.cpus, priority=prio)
+    elif args.command == "mute":
+        aggressive = args.aggressive
+        launcher.run_mute(aggressive=aggressive)
+    elif args.command == "pulse":
+        launcher.run_pulse(duration=args.duration, interval=args.interval, use_rich=args.rich)
+    elif args.command == "shield":
+        if args.shield_command == "restore":
+            launcher.restore()
+    elif args.command == "mnemos":
+        if args.mnemos_command == "scan":
+            thoughts = launcher.mnemos_scan(agent=args.agent)
+            print(json.dumps(thoughts, indent=2))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

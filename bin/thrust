@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""
+Command line interface for the THRUST accelerator.
+
+This script acts as a user‑facing entry point for invoking the core
+functionality contained in ``thrust_core.py``.  It supports several
+subcommands:
+
+``benchmark``
+    Run an arbitrary command multiple times and report execution times.
+
+``auto``
+    Automatically discover running AI runtimes (e.g. Ollama, LM Studio) and
+    apply CPU affinity and priority boosts to them.
+
+``mute``
+    Flush system caches and free up memory.  When invoked without options
+    only Python objects are collected; with ``--aggressive`` it also drops
+    kernel caches or calls Windows' ``EmptyWorkingSet`` depending on the OS.
+
+``prefetch``
+    Warm up disk and OS caches by reading a model file into memory.
+
+``config``
+    Load a JSON configuration file (often named ``.thrustrc``) and print
+    the resulting configuration.  Config keys are merged into the
+    ``ThrustCore`` instance.
+
+``boost``
+    Manually apply CPU affinity and process priority to the current process.
+
+Examples
+--------
+
+Benchmark a simple program:
+
+```
+bin/thrust benchmark /usr/bin/time --runs 3 -- ls -l
+```
+
+Auto detect LLM runtimes and apply a 2‑core affinity:
+
+```
+bin/thrust auto --cpus 0 1
+```
+
+Aggressively flush memory caches:
+
+```
+bin/thrust mute --aggressive
+```
+"""
+
+import argparse
+import os
+import sys
+import json
+
+# Insert the repository's src directory into sys.path for relative imports
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from thrust_core import ThrustCore  # type: ignore
+
+# Pro features live in a separate module that performs licence checks.  The
+# functions exported by ``pro_features`` will raise a ``PermissionError``
+# if no valid licence key is configured.  See ``src/pro_features.py`` for
+# details on how to set the licence.
+try:
+    from pro_features import (
+        aggressive_cache_clear,
+        apply_runtime_profile,
+        start_background_daemon,
+    )  # type: ignore
+except Exception:
+    # If pro_features cannot be imported (e.g. missing file), we silently
+    # ignore it.  Invoking pro commands will then fail with an ImportError.
+    aggressive_cache_clear = None  # type: ignore
+    apply_runtime_profile = None  # type: ignore
+    start_background_daemon = None  # type: ignore
+
+# Optional modules for extended functionality
+try:
+    from pulse_monitor import PulseMonitor  # type: ignore
+except Exception:
+    PulseMonitor = None  # type: ignore
+try:
+    from ignite_launcher import IgniteLauncher  # type: ignore
+except Exception:
+    IgniteLauncher = None  # type: ignore
+try:
+    from mute_cleaner import MuteCleaner  # type: ignore
+except Exception:
+    MuteCleaner = None  # type: ignore
+try:
+    from shield_recovery import save_state, restore_last_state  # type: ignore
+except Exception:
+    save_state = None  # type: ignore
+    restore_last_state = None  # type: ignore
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="THRUST – local AI inference accelerator",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Benchmark subcommand
+    bench = subparsers.add_parser("benchmark", help="run a command several times and report durations")
+    bench.add_argument("command", help="command to execute for benchmarking")
+    bench.add_argument("args", nargs=argparse.REMAINDER, help="arguments passed to the command")
+    bench.add_argument("--runs", type=int, default=1, help="number of benchmark runs")
+
+    # Auto detection and boost
+    auto = subparsers.add_parser("auto", help="auto detect running LLM runtimes and boost them")
+    auto.add_argument("--cpus", nargs="*", type=int, help="list of CPU cores to assign to detected runtimes")
+
+    # Mute (flush memory)
+    # Mute (memory cleaning) with soft/aggressive toggles
+    mute = subparsers.add_parser("mute", help="free system memory and caches")
+    group = mute.add_mutually_exclusive_group()
+    group.add_argument(
+        "--soft",
+        action="store_true",
+        help="perform a soft clean (garbage collect and close idle file descriptors)",
+    )
+    group.add_argument(
+        "--aggressive",
+        action="store_true",
+        help="drop OS caches in addition to GC (requires elevated privileges)",
+    )
+
+    # Prefetch model file
+    prefetch = subparsers.add_parser("prefetch", help="prefetch a model file into cache")
+    prefetch.add_argument("path", help="path to the model file")
+
+    # Load configuration
+    conf = subparsers.add_parser("config", help="load a JSON configuration file")
+    conf.add_argument("path", help="path to configuration file (JSON)")
+
+    # Boost current process manually
+    boost = subparsers.add_parser(
+        "boost", help="boost the current process's affinity and priority"
+    )
+    boost.add_argument(
+        "--cpus", nargs="*", type=int, help="list of CPU cores to bind to"
+    )
+    boost.add_argument(
+        "--nice",
+        type=str,
+        help="niceness or priority class (e.g. -5 or psutil.HIGH_PRIORITY_CLASS)",
+    )
+
+    # ------------------------------------------------------------------
+    # Pro subcommands
+    #
+    # The following commands expose paid features that require a valid
+    # licence key.  The licence can be supplied via the THRUST_LICENSE_KEY
+    # environment variable or in the ``license_key`` field of a JSON
+    # configuration file at ``~/.thrustrc``.  When invoked without a licence
+    # the commands will raise a PermissionError which we catch and display.
+
+    pro = subparsers.add_parser(
+        "pro",
+        help="invoke Pro edition features (requires valid licence key)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Paid features requiring a THRUST Pro licence.  Set the\n"
+            "THRUST_LICENSE_KEY environment variable or add a licence_key\n"
+            "entry to your ~/.thrustrc file before using these commands."
+        ),
+    )
+    pro_subparsers = pro.add_subparsers(dest="pro_command", required=True)
+
+    # Aggressive cache clearing
+    p_clear = pro_subparsers.add_parser(
+        "cache-clear", help="perform an aggressive cache clear (Pro)"
+    )
+
+    # Apply a runtime profile
+    p_profile = pro_subparsers.add_parser(
+        "profile", help="apply a runtime tuning profile (Pro)"
+    )
+    p_profile.add_argument(
+        "name", help="name of the runtime profile to apply (e.g. laptop, server)"
+    )
+
+    # Start background performance daemon
+    p_daemon = pro_subparsers.add_parser(
+        "daemon", help="start the background performance daemon (Pro)"
+    )
+
+    # Pulse monitor (real‑time graphs)
+    pulse = subparsers.add_parser("pulse", help="display real‑time CPU and memory usage")
+    pulse.add_argument(
+        "--duration",
+        type=float,
+        default=None,
+        help="duration in seconds to run the monitor (default: run indefinitely)",
+    )
+    pulse.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="sampling interval in seconds",
+    )
+    pulse.add_argument(
+        "--rich",
+        action="store_true",
+        help="use rich library for output if installed (not yet implemented)",
+    )
+
+    # Ignite prefetch and tuning
+    ignite = subparsers.add_parser(
+        "ignite", help="prefetch model and tune CPU affinity and priority"
+    )
+    ignite.add_argument(
+        "--model",
+        type=str,
+        help="path to model file to prefetch",
+    )
+    ignite.add_argument(
+        "--cpus",
+        nargs="*",
+        type=int,
+        help="list of CPU cores to bind to (e.g. 0 1)",
+    )
+    ignite.add_argument(
+        "--priority",
+        type=str,
+        help="niceness or priority class (e.g. -5 or psutil.HIGH_PRIORITY_CLASS)",
+    )
+
+    return parser
+
+
+def parse_priority(value: str) -> int | str:
+    """Convert a command‑line priority string into an int or psutil constant."""
+    import psutil  # import here to avoid top‑level requirement in docstring
+    # Try to resolve named constants from psutil
+    if hasattr(psutil, value):
+        return getattr(psutil, value)
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid nice value: {value}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    engine = ThrustCore()
+    # Attempt to restore previous state (safe boot) if available
+    if restore_last_state is not None:
+        try:
+            restore_last_state(engine)
+        except Exception:
+            pass
+
+    if args.command == "benchmark":
+        durations = engine.benchmark_command(args.command, args.args, runs=args.runs)
+        if not durations:
+            print("Benchmark failed")
+        else:
+            for i, d in enumerate(durations, 1):
+                print(f"Run {i}: {d:.3f} seconds")
+            avg = sum(durations) / len(durations)
+            print(f"Average: {avg:.3f} seconds over {len(durations)} run(s)")
+
+    elif args.command == "auto":
+        procs = engine.auto_detect_runtime()
+        if not procs:
+            print("No supported LLM runtimes found")
+        else:
+            for proc in procs:
+                engine.apply_boost(proc, args.cpus)
+            print(f"Applied boost to {len(procs)} runtime(s)")
+
+    elif args.command == "mute":
+        # Save current state before performing aggressive operations
+        if save_state is not None:
+            try:
+                save_state(engine)
+            except Exception:
+                pass
+        # Use MuteCleaner if available
+        if MuteCleaner is not None:
+            cleaner = MuteCleaner(engine)
+            if args.aggressive:
+                cleaner.aggressive_clean()
+            else:
+                cleaner.soft_clean()
+        else:
+            # Fallback to thrust_core.flush_memory
+            engine.flush_memory(aggressive=args.aggressive)
+        print("Memory flush completed")
+
+    elif args.command == "prefetch":
+        elapsed = engine.prefetch_model(args.path)
+        if elapsed is not None:
+            print(f"Prefetched file in {elapsed:.2f} seconds")
+
+    elif args.command == "config":
+        cfg = engine.load_config(args.path)
+        print(json.dumps(cfg, indent=2))  # pretty print the merged config
+
+    elif args.command == "boost":
+        # Parse priority value only if provided
+        nice = None
+        if args.nice:
+            nice = parse_priority(args.nice)
+        engine.set_cpu_affinity(args.cpus)
+        engine.set_priority(nice)
+        print("Boost applied to current process")
+
+    # ----------------------------------------------------------
+    # Pro commands
+    #
+    elif args.command == "pro":
+        # Ensure pro module is available
+        if aggressive_cache_clear is None:
+            print("Pro module is missing; cannot execute pro commands")
+            sys.exit(1)
+        try:
+            if args.pro_command == "cache-clear":
+                aggressive_cache_clear()  # type: ignore[operator-not-callable]
+                print("Aggressive cache clear completed")
+            elif args.pro_command == "profile":
+                apply_runtime_profile(args.name)  # type: ignore[operator-not-callable]
+                print(f"Applied profile {args.name}")
+            elif args.pro_command == "daemon":
+                start_background_daemon()  # type: ignore[operator-not-callable]
+                print("Background daemon started")
+        except PermissionError as exc:
+            print(str(exc))
+        except Exception as exc:
+            print(f"Failed to execute pro command: {exc}")
+
+    elif args.command == "pulse":
+        if PulseMonitor is None:
+            print("Pulse monitor is unavailable; please ensure psutil is installed")
+        else:
+            mon = PulseMonitor(use_rich=args.rich)
+            mon.live_graph(duration=args.duration, interval=args.interval)
+
+    elif args.command == "ignite":
+        # Parse priority string if provided
+        prio: int | str | None = None
+        if args.priority:
+            try:
+                prio = parse_priority(args.priority)
+            except Exception as exc:
+                print(f"Invalid priority value: {exc}")
+                return
+        if IgniteLauncher is None:
+            print("Ignite module is unavailable; cannot perform ignite operations")
+            return
+        launcher = IgniteLauncher(engine)
+        launcher.launch(model_path=args.model, cpus=args.cpus, priority=prio)
+        print("Ignite operation completed")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

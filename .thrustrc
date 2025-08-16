@@ -1,0 +1,7 @@
+{
+  "preferred_cpus": [0, 1],
+  "priority": -5,
+  "aggressive_flush": false,
+  "enable_prefetch": true,
+  "license_key": "ENTER-YOUR-LICENSE-KEY-HERE"
+}

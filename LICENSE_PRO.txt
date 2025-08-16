@@ -1,0 +1,15 @@
+CipherWorks Proprietary License
+
+This file governs the THRUST Pro Edition.  By installing or using
+the Pro edition of THRUST (including any related source code,
+object code, documentation, samples or other materials), you agree
+to be bound by the terms and conditions of the CipherWorks
+Proprietary License Agreement.  You are licensed to use, copy and
+modify the Pro features only if you have obtained a valid licence
+key from CipherWorks or its authorised resellers.  All rights not
+expressly granted are reserved.
+
+Redistribution of the Pro edition or any portion thereof without
+explicit written permission from CipherWorks is strictly prohibited.
+
+For details please contact: legal@cipherworks.example.com

@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+Legacy wrapper for the ``thrust`` command.
+
+This script forwards all arguments to the original ``bin/thrust``
+entry point.  It exists to maintain backwards compatibility after
+introducing the unified ``cipher`` command.  Users should transition
+to ``cipher`` in future releases.
+"""
+import os
+import sys
+import subprocess
+
+
+def main() -> None:
+    # Determine path to the thrust script (located two directories up)
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    thrust_path = os.path.join(script_dir, "thrust")
+    # Execute the underlying thrust script with passed arguments
+    result = subprocess.run([thrust_path] + sys.argv[1:])
+    sys.exit(result.returncode)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
