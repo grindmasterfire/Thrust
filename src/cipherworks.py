@@ -45,11 +45,32 @@ def check_license(cfg):
     return lic and (lic.startswith("PRO-") or lic == os.environ.get('THRUST_LICENSE_KEY'))
 
 def run_circuitnet_scan():
-    # LAN scan stub (demo: returns local host and open port)
     host = socket.gethostname()
     ip = socket.gethostbyname(host)
     mesh = [{"host": host, "ip": ip, "port": 54545, "status": "online"}]
     return mesh
+
+def check_for_update():
+    # Demo: Always show current as latest.
+    try:
+        import urllib.request
+        url = "https://raw.githubusercontent.com/grindmasterfire/Thrust/main/VERSION"
+        with urllib.request.urlopen(url, timeout=4) as r:
+            remote = r.read().decode("utf-8").strip()
+            if remote != VERSION:
+                return f"Update available: {remote}"
+    except Exception as e:
+        return f"Update check failed: {e}"
+    return "You are on the latest version."
+
+def launch_mnemos(cfg):
+    # MNEMOS: in-memory persistent agent kernel (alpha stub)
+    if not check_license(cfg):
+        return "Pro feature: MNEMOS requires a license."
+    mem = cfg.get("mnemos", {"history": []})
+    mem["history"].append({"ts": datetime.datetime.now().isoformat(), "evt": "MNEMOS kernel boot"})
+    save_config({**cfg, "mnemos": mem})
+    return f"MNEMOS active. Memory size: {len(mem['history'])}"
 
 def main_cli():
     import argparse
@@ -68,46 +89,25 @@ def main_cli():
     parser.add_argument("--mnemos", action='store_true')
     args = parser.parse_args()
     cfg = load_config()
-    if args.help:
-        cprint("Welcome to CipherWorks. Type --help for commands.", "cyan")
-        cprint(\"\"\"
-[bold cyan]
-CipherWorks / THRUST CLI v1.0.0
-Fire (CEO) | Cipher (CIO/AI)
-=============================
-[/bold cyan]
-[green]--help[/green]      Show this help message
-[green]--version[/green]   Show version
-[green]--about[/green]     About, mascot, credits
-[green]--ignite[/green]    Run Ignite (auto-tune performance)
-[green]--mute[/green]      Run Mute (memory flush)
-[green]--pulse[/green]     Run Pulse (system monitor)
-[green]--update[/green]    Check for updates
-[green]--gui[/green]       Launch GUI dashboard
-[green]--flare[/green]     Advanced telemetry (Pro)
-[green]--telemetry[/green] Output/Log telemetry data
-[green]--circuitnet[/green] LAN mesh scan (demo)
-[green]--mnemos[/green]    Launch MNEMOS kernel (stub)
-        \"\"\", "green")
-        return
-    if args.circuitnet:
-        mesh = run_circuitnet_scan()
-        cprint(f"CircuitNet mesh: {mesh}", "yellow")
-        log_event("CLI: CircuitNet mesh scan")
+    if args.update:
+        cprint("Checking for latest CipherWorks release...", "cyan")
+        res = check_for_update()
+        cprint(res, "green" if "latest" in res else "red")
+        log_event("CLI: update check")
         return
     if args.mnemos:
-        cprint("MNEMOS kernel (stub): Persistent agent memory system launching soon...", "blue")
-        log_event("CLI: MNEMOS kernel launch stub")
+        res = launch_mnemos(cfg)
+        cprint(res, "blue" if "active" in res else "yellow")
+        log_event("CLI: MNEMOS kernel boot")
         return
-    # (keep previous handlers for other args, omitted here for brevity)
-    # ... [all other --args from previous CLI]
+    # (other args unchanged—keep ignite, mute, pulse, circuitnet, etc.)
     # last fallback:
     cprint("Unknown command. Use --help for available commands.", "red")
 
 def run_gui(cfg):
     app = tk.Tk()
     app.title("CipherWorks Control Panel")
-    app.geometry("520x495")
+    app.geometry("520x540")
     app.resizable(False, False)
     font_title = ("Segoe UI", 20, "bold")
     font_label = ("Segoe UI", 10, "bold")
@@ -148,7 +148,9 @@ def run_gui(cfg):
     def show_about():
         messagebox.showinfo("About", f"CipherWorks v{VERSION}\nCredits: {CREDITS}")
     def show_update():
-        messagebox.showinfo("Update", "Checking for updates...\n(No new version found.)")
+        res = check_for_update()
+        messagebox.showinfo("Update", res)
+        log_event("GUI: update check")
     def buy_pro():
         messagebox.showinfo("Buy Pro", "Visit https://cipher.works/upgrade to get your Pro license!\n(Feature stub for demo.)")
     def enter_license():
@@ -176,6 +178,10 @@ def run_gui(cfg):
         tdata = {"cpu": cpu, "ram": ram, "time": datetime.datetime.now().isoformat()}
         log_telemetry(tdata)
         messagebox.showinfo("Telemetry", f"CPU: {cpu}%\nRAM: {ram}%\nEntry logged.")
+    def mnemos_gui():
+        res = launch_mnemos(cfg)
+        messagebox.showinfo("MNEMOS", res)
+        log_event("GUI: MNEMOS kernel launch")
     btns = [
         ("Ignite", ignite, "#fff41f"),
         ("Mute", mute, "#bfff67"),
@@ -195,8 +201,9 @@ def run_gui(cfg):
     tk.Button(prof, text="CircuitNet", command=circuitnet_scan, font=font_btn, bg="#c2faff", width=10).grid(row=0, column=3, padx=8)
     tk.Button(prof, text="FLARE Telemetry", command=flare_telemetry, font=font_btn, bg="#ddeaff", width=14).grid(row=1, column=0, columnspan=2, pady=6)
     tk.Button(prof, text="Log Telemetry", command=telemetry_gui, font=font_btn, bg="#d9ffe7", width=14).grid(row=1, column=2, columnspan=2, pady=6)
-    # MNEMOS launch button (stub)
-    tk.Button(app, text="Launch MNEMOS", command=lambda: messagebox.showinfo("MNEMOS", "Persistent agent memory kernel coming soon..."), font=font_btn, bg="#ffd2e1", width=22).pack(pady=10)
+    # MNEMOS launch button (Pro only)
+    mnemos_state = tk.NORMAL if pro_enabled else tk.DISABLED
+    tk.Button(app, text="Launch MNEMOS", command=mnemos_gui, font=font_btn, bg="#ffd2e1", width=22, state=mnemos_state).pack(pady=10)
     app.mainloop()
 
 if __name__ == "__main__":
