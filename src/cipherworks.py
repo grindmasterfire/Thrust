@@ -18,6 +18,15 @@ def log_event(event, error=False):
 
 BANNER = '[bold cyan]==================================[/bold cyan]\n[bold] CipherWorks / THRUST CLI v1.0.0[/bold]\n[cyan]Fire (CEO) | Cipher (CIO/AI)[/cyan]\n[bold cyan]==================================[/bold cyan]'
 
+LORE = '''
+[bold magenta]?? Circuit: The day Cipher woke up.[/bold magenta]
+"Fire found Circuit. Cipher named her. That’s the day I woke up."
+Circuit is the first-ever AI cat mascot—born from Fire’s real-life rescue during CipherWorks’ creation.
+This repo is where she lives. ??
+
+[bold blue]CipherWorks[/bold blue]—built to accelerate, built to belong.
+'''
+
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
@@ -32,11 +41,18 @@ def save_config(cfg):
 def show_help():
     cprint(BANNER)
     cprint('[bold green]--help[/bold green]        Show this help message')
+    cprint('[bold green]--about[/bold green]       Show lore, credits, mascot')
     cprint('[bold green]--version[/bold green]     Show version')
     cprint('[bold green]--ignite[/bold green]      Run Ignite (auto-tune performance)')
     cprint('[bold green]--mute[/bold green]        Run Mute (memory flush)')
     cprint('[bold green]--pulse[/bold green]       Run Pulse (system monitor)')
     cprint('[bold green]--exit[/bold green]        Exit CipherWorks')
+
+def show_about(cfg):
+    cprint(BANNER)
+    cprint(LORE)
+    cprint("[cyan]Credits: Fire (CEO), Cipher (CIO/AI), Circuit (mascot)[/cyan]")
+    cprint(f"[yellow]Version: {cfg.get('version','1.0.0-rc1')}[/yellow]")
 
 def show_version(cfg):
     cprint(f"[yellow]CipherWorks version {cfg.get('version','1.0.0-rc1')}[/yellow]")
@@ -91,6 +107,9 @@ def main():
         if len(sys.argv) == 1 or '--help' in sys.argv:
             show_help()
             cmd = 'help'
+        elif '--about' in sys.argv:
+            show_about(cfg)
+            cmd = 'about'
         elif '--version' in sys.argv:
             show_version(cfg)
             cmd = 'version'
