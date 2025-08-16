@@ -44,6 +44,13 @@ def mnemos_auto(cfg):
         "version": VERSION,
         "time": datetime.datetime.now().isoformat(),
         "config": cfg,
+        "sysinfo": {
+            "cpu": psutil.cpu_percent(),
+            "ram": psutil.virtual_memory().percent,
+            "user": os.getlogin(),
+            "cwd": os.getcwd(),
+        },
+        "notes": "CipherWorks persistent memory dump"
     }
     key = cfg.get("mnemos_key", "cipherworks")
     dump_memory(state, key)
@@ -117,7 +124,7 @@ def legacy_import_gui(cfg):
 def run_gui(cfg):
     app = tk.Tk()
     app.title("CipherWorks / THRUST")
-    app.geometry("420x270")
+    app.geometry("440x290")
     l1 = tk.Label(app, text="CipherWorks / THRUST", font=("Segoe UI", 18, "bold"), fg="#39c")
     l1.pack(pady=10)
     l2 = tk.Label(app, text="v%s" % VERSION, fg="#9933ff")
