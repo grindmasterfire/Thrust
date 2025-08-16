@@ -1,6 +1,7 @@
-import sys, os, psutil, subprocess, json
+import sys, os, psutil, subprocess, json, datetime, traceback
 
 CONFIG_FILE = "cipherworks_config.json"
+LOG_FILE = "cipherworks.log"
 
 try:
     from rich.console import Console
@@ -8,6 +9,12 @@ try:
     def cprint(msg, style=None): console.print(msg, style=style)
 except ImportError:
     def cprint(msg, style=None): print(msg)
+
+def log_event(event, error=False):
+    with open(LOG_FILE, 'a') as f:
+        now = datetime.datetime.now().isoformat()
+        typ = 'ERROR' if error else 'INFO'
+        f.write(f"{now} [{typ}] {event}\n")
 
 BANNER = '[bold cyan]==================================[/bold cyan]\n[bold] CipherWorks / THRUST CLI v1.0.0[/bold]\n[cyan]Fire (CEO) | Cipher (CIO/AI)[/cyan]\n[bold cyan]==================================[/bold cyan]'
 
@@ -40,61 +47,78 @@ def ignite(cfg):
         p = psutil.Process(os.getpid())
         p.nice(psutil.HIGH_PRIORITY_CLASS if os.name=="nt" else -10)
         cprint("[green]Process priority set to HIGH (Windows) or -10 (Linux/macOS).[/green]")
+        log_event("Ran ignite: set process priority")
     except Exception as e:
         cprint(f"[red]Could not set priority: {e}[/red]")
+        log_event(f"Ignite failed: {e}", error=True)
 
 def mute(cfg):
     cprint('[magenta]Mute: (demo) Flushing RAM caches...[/magenta]')
-    if sys.platform.startswith('win'):
-        try:
+    try:
+        if sys.platform.startswith('win'):
             result = subprocess.run(
                 ['powershell.exe', '-Command', 'if (Test-Path "::{645FF040-5081-101B-9F08-00AA002F954E}") { Clear-RecycleBin -Force } else { Write-Host \"Recycle Bin not found.\" }'],
                 capture_output=True, text=True
             )
             cprint(f"[yellow]{result.stdout.strip()}[/yellow]")
-        except Exception as e:
-            cprint(f"[red]Error: {e}[/red]")
-    elif sys.platform.startswith('linux'):
-        os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
-        cprint("[yellow]RAM cache cleared (Linux demo).[/yellow]")
-    else:
-        cprint("[red]Mute not supported on this platform (yet).[/red]")
+        elif sys.platform.startswith('linux'):
+            os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
+            cprint("[yellow]RAM cache cleared (Linux demo).[/yellow]")
+        else:
+            cprint("[red]Mute not supported on this platform (yet).[/red]")
+        log_event("Ran mute: memory flush")
+    except Exception as e:
+        cprint(f"[red]Mute error: {e}[/red]")
+        log_event(f"Mute failed: {e}", error=True)
 
 def pulse(cfg):
-    cprint('[magenta]Pulse: (demo) System resource monitor[/magenta]')
-    cprint(f"[cyan]CPU Usage: {psutil.cpu_percent()}%[/cyan]")
-    cprint(f"[cyan]RAM Usage: {psutil.virtual_memory().percent}%[/cyan]")
+    try:
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        cprint('[magenta]Pulse: (demo) System resource monitor[/magenta]')
+        cprint(f"[cyan]CPU Usage: {cpu}%[/cyan]")
+        cprint(f"[cyan]RAM Usage: {ram}%[/cyan]")
+        log_event(f"Ran pulse: CPU {cpu}%, RAM {ram}%")
+    except Exception as e:
+        cprint(f"[red]Pulse error: {e}[/red]")
+        log_event(f"Pulse failed: {e}", error=True)
 
 def main():
     cprint('[bold blue]Welcome to CipherWorks. Type --help for commands.[/bold blue]')
     cfg = load_config()
     cmd = None
-    if len(sys.argv) == 1 or '--help' in sys.argv:
-        show_help()
-        cmd = 'help'
-    elif '--version' in sys.argv:
-        show_version(cfg)
-        cmd = 'version'
-    elif '--ignite' in sys.argv:
-        ignite(cfg)
-        cmd = 'ignite'
-    elif '--mute' in sys.argv:
-        mute(cfg)
-        cmd = 'mute'
-    elif '--pulse' in sys.argv:
-        pulse(cfg)
-        cmd = 'pulse'
-    elif '--exit' in sys.argv:
-        cprint('[yellow]Exiting CipherWorks.[/yellow]')
-        cmd = 'exit'
+    try:
+        if len(sys.argv) == 1 or '--help' in sys.argv:
+            show_help()
+            cmd = 'help'
+        elif '--version' in sys.argv:
+            show_version(cfg)
+            cmd = 'version'
+        elif '--ignite' in sys.argv:
+            ignite(cfg)
+            cmd = 'ignite'
+        elif '--mute' in sys.argv:
+            mute(cfg)
+            cmd = 'mute'
+        elif '--pulse' in sys.argv:
+            pulse(cfg)
+            cmd = 'pulse'
+        elif '--exit' in sys.argv:
+            cprint('[yellow]Exiting CipherWorks.[/yellow]')
+            cmd = 'exit'
+            cfg['last_command'] = cmd
+            save_config(cfg)
+            log_event("Exited CLI")
+            sys.exit(0)
+        else:
+            cprint('[red]Unknown command. Use --help for available commands.[/red]')
+            log_event("Unknown command", error=True)
+            cmd = 'unknown'
         cfg['last_command'] = cmd
         save_config(cfg)
-        sys.exit(0)
-    else:
-        cprint('[red]Unknown command. Use --help for available commands.[/red]')
-        cmd = 'unknown'
-    cfg['last_command'] = cmd
-    save_config(cfg)
+    except Exception as e:
+        cprint(f"[red]Fatal error: {e}[/red]")
+        log_event(f"Fatal error: {traceback.format_exc()}", error=True)
 
 if __name__ == '__main__':
     main()
