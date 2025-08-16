@@ -1,4 +1,4 @@
-import sys, os, psutil
+import sys, os, psutil, subprocess
 
 BANNER = '''
 ==================================
@@ -31,8 +31,14 @@ def ignite():
 def mute():
     print('Mute: (demo) Flushing RAM caches...')
     if sys.platform.startswith('win'):
-        os.system('powershell.exe Clear-RecycleBin -Force')
-        print("Recycle Bin cleared (Windows demo).")
+        try:
+            result = subprocess.run(
+                ['powershell.exe', '-Command', 'if (Test-Path "::{645FF040-5081-101B-9F08-00AA002F954E}") { Clear-RecycleBin -Force } else { Write-Host \"Recycle Bin not found.\" }'],
+                capture_output=True, text=True
+            )
+            print(result.stdout.strip())
+        except Exception as e:
+            print(f"Error: {e}")
     elif sys.platform.startswith('linux'):
         os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
         print("RAM cache cleared (Linux demo).")
