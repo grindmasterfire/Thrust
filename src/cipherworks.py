@@ -1,56 +1,59 @@
 import sys, os, psutil, subprocess
 
-BANNER = '''
-==================================
- CipherWorks / THRUST CLI v1.0.0
- Fire (CEO) | Cipher (CIO/AI)
-==================================
-'''
+try:
+    from rich.console import Console
+    console = Console()
+    def cprint(msg, style=None): console.print(msg, style=style)
+except ImportError:
+    def cprint(msg, style=None): print(msg)
+
+BANNER = '[bold cyan]==================================[/bold cyan]\n[bold] CipherWorks / THRUST CLI v1.0.0[/bold]\n[cyan]Fire (CEO) | Cipher (CIO/AI)[/cyan]\n[bold cyan]==================================[/bold cyan]'
 
 def show_help():
-    print(BANNER)
-    print('--help        Show this help message')
-    print('--version     Show version')
-    print('--ignite      Run Ignite (auto-tune performance)')
-    print('--mute        Run Mute (memory flush)')
-    print('--pulse       Run Pulse (system monitor)')
-    print('--exit        Exit CipherWorks')
+    cprint(BANNER)
+    cprint('[bold green]--help[/bold green]        Show this help message')
+    cprint('[bold green]--version[/bold green]     Show version')
+    cprint('[bold green]--ignite[/bold green]      Run Ignite (auto-tune performance)')
+    cprint('[bold green]--mute[/bold green]        Run Mute (memory flush)')
+    cprint('[bold green]--pulse[/bold green]       Run Pulse (system monitor)')
+    cprint('[bold green]--exit[/bold green]        Exit CipherWorks')
 
 def show_version():
-    print('CipherWorks version 1.0.0-rc1')
+    cprint('[yellow]CipherWorks version 1.0.0-rc1[/yellow]')
 
 def ignite():
-    print('Ignite: (demo) Prioritizing CipherWorks process...')
+    cprint('[magenta]Ignite: (demo) Prioritizing CipherWorks process...[/magenta]')
     try:
         p = psutil.Process(os.getpid())
         p.nice(psutil.HIGH_PRIORITY_CLASS if os.name=="nt" else -10)
-        print("Process priority set to HIGH (Windows) or -10 (Linux/macOS).")
+        cprint("[green]Process priority set to HIGH (Windows) or -10 (Linux/macOS).[/green]")
     except Exception as e:
-        print(f"Could not set priority: {e}")
+        cprint(f"[red]Could not set priority: {e}[/red]")
 
 def mute():
-    print('Mute: (demo) Flushing RAM caches...')
+    cprint('[magenta]Mute: (demo) Flushing RAM caches...[/magenta]')
     if sys.platform.startswith('win'):
         try:
             result = subprocess.run(
                 ['powershell.exe', '-Command', 'if (Test-Path "::{645FF040-5081-101B-9F08-00AA002F954E}") { Clear-RecycleBin -Force } else { Write-Host \"Recycle Bin not found.\" }'],
                 capture_output=True, text=True
             )
-            print(result.stdout.strip())
+            cprint(f"[yellow]{result.stdout.strip()}[/yellow]")
         except Exception as e:
-            print(f"Error: {e}")
+            cprint(f"[red]Error: {e}[/red]")
     elif sys.platform.startswith('linux'):
         os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
-        print("RAM cache cleared (Linux demo).")
+        cprint("[yellow]RAM cache cleared (Linux demo).[/yellow]")
     else:
-        print("Mute not supported on this platform (yet).")
+        cprint("[red]Mute not supported on this platform (yet).[/red]")
 
 def pulse():
-    print('Pulse: (demo) System resource monitor')
-    print(f"CPU Usage: {psutil.cpu_percent()}%")
-    print(f"RAM Usage: {psutil.virtual_memory().percent}%")
+    cprint('[magenta]Pulse: (demo) System resource monitor[/magenta]')
+    cprint(f"[cyan]CPU Usage: {psutil.cpu_percent()}%[/cyan]")
+    cprint(f"[cyan]RAM Usage: {psutil.virtual_memory().percent}%[/cyan]")
 
 def main():
+    cprint('[bold blue]Welcome to CipherWorks. Type --help for commands.[/bold blue]')
     if len(sys.argv) == 1 or '--help' in sys.argv:
         show_help()
     elif '--version' in sys.argv:
@@ -62,10 +65,10 @@ def main():
     elif '--pulse' in sys.argv:
         pulse()
     elif '--exit' in sys.argv:
-        print('Exiting CipherWorks.')
+        cprint('[yellow]Exiting CipherWorks.[/yellow]')
         sys.exit(0)
     else:
-        print('Unknown command. Use --help for available commands.')
+        cprint('[red]Unknown command. Use --help for available commands.[/red]')
 
 if __name__ == '__main__':
     main()
