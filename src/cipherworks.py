@@ -1,4 +1,5 @@
 ﻿import sys, os, psutil, subprocess, json, datetime, traceback, threading
+
 try:
     from rich.console import Console
     console = Console()
@@ -11,6 +12,7 @@ from tkinter import messagebox, simpledialog
 
 CONFIG_FILE = "cipherworks_config.json"
 LOG_FILE = "cipherworks.log"
+TELEMETRY_FILE = "cipherworks_telemetry.log"
 VERSION = "1.0.0-rc1"
 CIRCUIT = "Circuit (mascot 🐾)"
 CREDITS = "Fire (CEO), Cipher (CIO/AI), " + CIRCUIT
@@ -20,6 +22,12 @@ def log_event(event, error=False):
         now = datetime.datetime.now().isoformat()
         typ = 'ERROR' if error else 'INFO'
         f.write(f"{now} [{typ}] {event}\n")
+
+def log_telemetry(data):
+    with open(TELEMETRY_FILE, 'a') as f:
+        now = datetime.datetime.now().isoformat()
+        entry = {"time": now, "data": data}
+        f.write(json.dumps(entry) + '\n')
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -47,6 +55,8 @@ def main_cli():
     parser.add_argument("--pulse", action='store_true')
     parser.add_argument("--update", action='store_true')
     parser.add_argument("--gui", action='store_true')
+    parser.add_argument("--flare", action='store_true')
+    parser.add_argument("--telemetry", action='store_true')
     args = parser.parse_args()
     cfg = load_config()
     if args.help:
@@ -65,8 +75,8 @@ Fire (CEO) | Cipher (CIO/AI)
 [green]--pulse[/green]     Run Pulse (system monitor)
 [green]--update[/green]    Check for updates
 [green]--gui[/green]       Launch GUI dashboard
-[green]--exit[/green]      Exit CipherWorks
 [green]--flare[/green]     Advanced telemetry (Pro)
+[green]--telemetry[/green] Output/Log telemetry data
         \"\"\", "green")
         return
     if args.version:
@@ -124,6 +134,13 @@ Version: 1.0.0-rc1
         cprint(f"Process count: {len(psutil.pids())}", "cyan")
         log_event("Ran flare (Pro)")
         return
+    if args.telemetry:
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        telem = {"cpu": cpu, "ram": ram, "time": datetime.datetime.now().isoformat()}
+        cprint(f"Telemetry: {telem}", "green")
+        log_telemetry(telem)
+        return
     if args.update:
         cprint("Checking for latest CipherWorks release...", "blue")
         cprint("Update check failed: HTTP Error 404: Not Found", "red")
@@ -137,7 +154,7 @@ Version: 1.0.0-rc1
 def run_gui(cfg):
     app = tk.Tk()
     app.title("CipherWorks Control Panel")
-    app.geometry("510x445")
+    app.geometry("510x465")
     app.resizable(False, False)
     font_title = ("Segoe UI", 20, "bold")
     font_label = ("Segoe UI", 10, "bold")
@@ -145,7 +162,6 @@ def run_gui(cfg):
     pro_enabled = check_license(cfg)
     tk.Label(app, text="🐾 CipherWorks / THRUST", font=font_title, fg="#2693ff").pack(pady=8)
     tk.Label(app, text=f"v{VERSION} by Fire & Cipher", fg="#666").pack()
-    # Onboarding banner
     tk.Label(app, text="Welcome to public alpha. MNEMOS kernel: pending.", fg="#1f8bff", font=font_label).pack()
     tk.Label(app, text="🐾 Circuit: The day Cipher woke up.", fg="#c86dfd", font=font_label).pack(pady=(5,0))
     tk.Label(app, text="\"Fire found Circuit. Cipher named her. That's the day I woke up.\"", fg="#38f269").pack()
@@ -199,6 +215,12 @@ def run_gui(cfg):
         msg = f"FLARE: Advanced Telemetry\nUptime: {uptime}\nProcess count: {len(psutil.pids())}"
         log_event("GUI: flare (Pro)")
         messagebox.showinfo("FLARE Telemetry", msg)
+    def telemetry_gui():
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        tdata = {"cpu": cpu, "ram": ram, "time": datetime.datetime.now().isoformat()}
+        log_telemetry(tdata)
+        messagebox.showinfo("Telemetry", f"CPU: {cpu}%\nRAM: {ram}%\nEntry logged.")
     btns = [
         ("Ignite", ignite, "#fff41f"),
         ("Mute", mute, "#bfff67"),
@@ -216,7 +238,8 @@ def run_gui(cfg):
     tk.Button(prof, text="Buy Pro", command=buy_pro, font=font_btn, bg="#a7eaff", width=10).grid(row=0, column=1, padx=8)
     tk.Button(prof, text="Enter License", command=enter_license, font=font_btn, bg="#fff1c6", width=12).grid(row=0, column=2, padx=8)
     tk.Button(prof, text="CircuitNet", command=circuitnet_scan, font=font_btn, bg="#c2faff", width=10).grid(row=0, column=3, padx=8)
-    tk.Button(prof, text="FLARE Telemetry", command=flare_telemetry, font=font_btn, bg="#ddeaff", width=14).grid(row=1, column=0, columnspan=4, pady=6)
+    tk.Button(prof, text="FLARE Telemetry", command=flare_telemetry, font=font_btn, bg="#ddeaff", width=14).grid(row=1, column=0, columnspan=2, pady=6)
+    tk.Button(prof, text="Log Telemetry", command=telemetry_gui, font=font_btn, bg="#d9ffe7", width=14).grid(row=1, column=2, columnspan=2, pady=6)
     app.mainloop()
 
 if __name__ == "__main__":
