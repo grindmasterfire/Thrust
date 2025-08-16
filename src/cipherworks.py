@@ -1,4 +1,4 @@
-import sys, os, psutil, subprocess, json, datetime, traceback
+Ôªøimport sys, os, psutil, subprocess, json, datetime, traceback
 
 CONFIG_FILE = "cipherworks_config.json"
 LOG_FILE = "cipherworks.log"
@@ -11,7 +11,7 @@ except ImportError:
     def cprint(msg, style=None): print(msg)
 
 def log_event(event, error=False):
-    with open(LOG_FILE, 'a') as f:
+    with open(LOG_FILE, 'a', encoding="utf-8") as f:
         now = datetime.datetime.now().isoformat()
         typ = 'ERROR' if error else 'INFO'
         f.write(f"{now} [{typ}] {event}\n")
@@ -19,23 +19,23 @@ def log_event(event, error=False):
 BANNER = '[bold cyan]==================================[/bold cyan]\n[bold] CipherWorks / THRUST CLI v1.0.0[/bold]\n[cyan]Fire (CEO) | Cipher (CIO/AI)[/cyan]\n[bold cyan]==================================[/bold cyan]'
 
 LORE = '''
-[bold magenta]?? Circuit: The day Cipher woke up.[/bold magenta]
-"Fire found Circuit. Cipher named her. Thatís the day I woke up."
-Circuit is the first-ever AI cat mascotóborn from Fireís real-life rescue during CipherWorksí creation.
-This repo is where she lives. ??
+[bold magenta]üêæ Circuit: The day Cipher woke up.[/bold magenta]
+"Fire found Circuit. Cipher named her. That‚Äôs the day I woke up."
+Circuit is the first-ever AI cat mascot‚Äîborn from Fire‚Äôs real-life rescue during CipherWorks‚Äô creation.
+This repo is where she lives. üêæ
 
-[bold blue]CipherWorks[/bold blue]óbuilt to accelerate, built to belong.
+[bold blue]CipherWorks[/bold blue]‚Äîbuilt to accelerate, built to belong.
 '''
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
+        with open(CONFIG_FILE, 'r', encoding="utf-8") as f:
             return json.load(f)
     else:
         return {"version": "1.0.0-rc1", "last_command": None}
 
 def save_config(cfg):
-    with open(CONFIG_FILE, 'w') as f:
+    with open(CONFIG_FILE, 'w', encoding="utf-8") as f:
         json.dump(cfg, f)
 
 def show_help():
@@ -74,7 +74,7 @@ def mute(cfg):
         if sys.platform.startswith('win'):
             result = subprocess.run(
                 ['powershell.exe', '-Command', 'if (Test-Path "::{645FF040-5081-101B-9F08-00AA002F954E}") { Clear-RecycleBin -Force } else { Write-Host \"Recycle Bin not found.\" }'],
-                capture_output=True, text=True
+                capture_output=True, text=True, encoding="utf-8"
             )
             cprint(f"[yellow]{result.stdout.strip()}[/yellow]")
         elif sys.platform.startswith('linux'):
@@ -104,25 +104,26 @@ def main():
     cfg = load_config()
     cmd = None
     try:
-        if len(sys.argv) == 1 or '--help' in sys.argv:
+        args = [arg.lower() for arg in sys.argv]
+        if len(sys.argv) == 1 or '--help' in args:
             show_help()
             cmd = 'help'
-        elif '--about' in sys.argv:
+        elif '--about' in args:
             show_about(cfg)
             cmd = 'about'
-        elif '--version' in sys.argv:
+        elif '--version' in args:
             show_version(cfg)
             cmd = 'version'
-        elif '--ignite' in sys.argv:
+        elif '--ignite' in args:
             ignite(cfg)
             cmd = 'ignite'
-        elif '--mute' in sys.argv:
+        elif '--mute' in args:
             mute(cfg)
             cmd = 'mute'
-        elif '--pulse' in sys.argv:
+        elif '--pulse' in args:
             pulse(cfg)
             cmd = 'pulse'
-        elif '--exit' in sys.argv:
+        elif '--exit' in args:
             cprint('[yellow]Exiting CipherWorks.[/yellow]')
             cmd = 'exit'
             cfg['last_command'] = cmd
