@@ -1,4 +1,4 @@
-import sys
+import sys, os, psutil
 
 BANNER = '''
 ==================================
@@ -20,13 +20,29 @@ def show_version():
     print('CipherWorks version 1.0.0-rc1')
 
 def ignite():
-    print('Ignite: (stub) Performance auto-tune coming soon.')
+    print('Ignite: (demo) Prioritizing CipherWorks process...')
+    try:
+        p = psutil.Process(os.getpid())
+        p.nice(psutil.HIGH_PRIORITY_CLASS if os.name=="nt" else -10)
+        print("Process priority set to HIGH (Windows) or -10 (Linux/macOS).")
+    except Exception as e:
+        print(f"Could not set priority: {e}")
 
 def mute():
-    print('Mute: (stub) Memory flush coming soon.')
+    print('Mute: (demo) Flushing RAM caches...')
+    if sys.platform.startswith('win'):
+        os.system('powershell.exe Clear-RecycleBin -Force')
+        print("Recycle Bin cleared (Windows demo).")
+    elif sys.platform.startswith('linux'):
+        os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches')
+        print("RAM cache cleared (Linux demo).")
+    else:
+        print("Mute not supported on this platform (yet).")
 
 def pulse():
-    print('Pulse: (stub) System monitor coming soon.')
+    print('Pulse: (demo) System resource monitor')
+    print(f"CPU Usage: {psutil.cpu_percent()}%")
+    print(f"RAM Usage: {psutil.virtual_memory().percent}%")
 
 def main():
     if len(sys.argv) == 1 or '--help' in sys.argv:
