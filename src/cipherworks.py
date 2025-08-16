@@ -1,5 +1,4 @@
-﻿import sys, os, psutil, subprocess, json, datetime, traceback, threading, socket
-
+﻿import sys, os, psutil, subprocess, json, datetime, traceback, threading, socket, base64, hashlib
 try:
     from rich.console import Console
     def cprint(msg, style=None): Console().print(msg, style=style)
@@ -7,88 +6,95 @@ except ImportError:
     def cprint(msg, style=None): print(msg)
 
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog
+from tkinter import messagebox, simpledialog, filedialog
 
 CONFIG_FILE = "cipherworks_config.json"
 LOG_FILE = "cipherworks.log"
-TELEMETRY_FILE = "cipherworks_telemetry.log"
+MEM_DUMP = "cipherworks_memdump.b64"
 VERSION = "1.0.0-rc1"
 CIRCUIT = "Circuit (mascot 🐾)"
 
-MNEMOS_STATE = {}
-def load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r', encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+def encrypt_state(state, key):
+    data = json.dumps(state).encode('utf-8')
+    k = hashlib.sha256(key.encode()).digest()
+    enc = bytearray(a ^ b for a, b in zip(data, k * (len(data) // len(k) + 1)))
+    return base64.b64encode(enc).decode()
 
-def save_config(cfg):
-    with open(CONFIG_FILE, 'w', encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+def decrypt_state(blob, key):
+    enc = base64.b64decode(blob.encode())
+    k = hashlib.sha256(key.encode()).digest()
+    data = bytearray(a ^ b for a, b in zip(enc, k * (len(enc) // len(k) + 1)))
+    return json.loads(data.decode())
+
+def dump_memory(state, key):
+    enc = encrypt_state(state, key)
+    with open(MEM_DUMP, 'w') as f: f.write(enc)
+    cprint("[green]Memory state exported to cipherworks_memdump.b64[/green]")
+
+def load_memory(key):
+    with open(MEM_DUMP) as f: blob = f.read()
+    state = decrypt_state(blob, key)
+    cprint("[cyan]Memory state loaded from cipherworks_memdump.b64[/cyan]")
+    return state
+
+def recall_shell():
+    key = input("Enter unlock key for memory recall: ")
+    try:
+        state = load_memory(key)
+        print(json.dumps(state, indent=2))
+        cprint("[bold green]Recall complete.[/bold green]")
+    except Exception as e:
+        cprint(f"[red]Recall failed: {e}[/red]")
 
 def mnemos_auto(cfg):
-    global MNEMOS_STATE
-    mfile = cfg.get("mnemos_file", "mnemos.json")
-    if os.path.exists(mfile):
-        with open(mfile, "r", encoding="utf-8") as f:
-            MNEMOS_STATE = json.load(f)
+    state = {"version": VERSION, "time": datetime.datetime.now().isoformat(), "config": cfg}
+    key = cfg.get("mnemos_key", "cipherworks")
+    dump_memory(state, key)
+
+def main_cli():
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--dump":
+            key = input("Enter key for dump: ")
+            cfg = load_config()
+            mnemos_auto({**cfg, "mnemos_key": key})
+        elif sys.argv[1] == "--recall":
+            recall_shell()
+        elif sys.argv[1] == "--help":
+            cprint("cipherworks.exe --dump | --recall | --help")
+        else:
+            cprint("[yellow]Unknown CLI argument.[/yellow]")
     else:
-        MNEMOS_STATE = {}
-    # persistent handshake
-    MNEMOS_STATE['last_recall'] = datetime.datetime.now().isoformat()
-    with open(mfile, "w", encoding="utf-8") as f:
-        json.dump(MNEMOS_STATE, f, indent=2)
+        cprint("[cyan]CipherWorks CLI ready. Use --help for commands.[/cyan]")
 
-def mnemos_dump():
-    with open("mnemos_export.json", "w", encoding="utf-8") as f:
-        json.dump(MNEMOS_STATE, f, indent=2)
-    cprint("[bold green]Memory dump exported to mnemos_export.json[/bold green]")
-
-def mnemos_recall():
-    global MNEMOS_STATE
-    if os.path.exists("mnemos_export.json"):
-        with open("mnemos_export.json", "r", encoding="utf-8") as f:
-            MNEMOS_STATE = json.load(f)
-        cprint("[cyan]Memory restored from export.[/cyan]")
-
-def mnemos_gui(app):
-    def dump_cb():
-        mnemos_dump()
-        messagebox.showinfo("MNEMOS Export", "Memory exported.")
-    def recall_cb():
-        mnemos_recall()
-        messagebox.showinfo("MNEMOS Recall", "Memory recalled from export.")
-    mnemos_win = tk.Toplevel(app)
-    mnemos_win.title("MNEMOS Kernel Ops")
-    tk.Label(mnemos_win, text="MNEMOS memory ops", font=("Segoe UI", 11)).pack(padx=14, pady=8)
-    tk.Button(mnemos_win, text="Export Memory", command=dump_cb).pack(padx=8, pady=4)
-    tk.Button(mnemos_win, text="Recall Memory", command=recall_cb).pack(padx=8, pady=4)
+def gui_menu(app, cfg):
+    menubar = tk.Menu(app)
+    mnemos_menu = tk.Menu(menubar, tearoff=0)
+    mnemos_menu.add_command(label="Export Memory", command=lambda: mnemos_auto(cfg))
+    mnemos_menu.add_command(label="Recall", command=recall_shell)
+    menubar.add_cascade(label="MNEMOS", menu=mnemos_menu)
+    app.config(menu=menubar)
 
 def run_gui(cfg):
     app = tk.Tk()
     app.title("CipherWorks / THRUST")
-    app.geometry("465x340")
-    app.configure(bg="#f2f2f7")
-    # ... (rest of the GUI code, including CircuitNet, Pro gates, telemetry, etc.)
-    # Add MNEMOS tab/button
-    tk.Button(app, text="MNEMOS", command=lambda: mnemos_gui(app), bg="#b7e6e6").place(x=12, y=300, width=85)
-    # Main loop
+    app.geometry("420x300")
+    l1 = tk.Label(app, text="CipherWorks / THRUST", font=("Segoe UI", 18, "bold"), fg="#39c")
+    l1.pack(pady=10)
+    l2 = tk.Label(app, text="v%s by Fire & Cipher" % VERSION, fg="#9933ff")
+    l2.pack()
+    l3 = tk.Label(app, text="🐾 Circuit: the day Cipher woke up.", fg="#e25cec")
+    l3.pack(pady=5)
+    b1 = tk.Button(app, text="Dump Memory", bg="#ffef00", command=lambda: mnemos_auto(cfg))
+    b1.pack(pady=3)
+    b2 = tk.Button(app, text="Recall Memory", bg="#00bfff", command=recall_shell)
+    b2.pack(pady=3)
+    gui_menu(app, cfg)
     app.mainloop()
 
-def main_cli():
-    args = sys.argv[1:]
-    cfg = load_config()
-    if "--mnemos-dump" in args:
-        mnemos_dump()
-    elif "--mnemos-recall" in args:
-        mnemos_recall()
-    elif "--mnemos-export" in args:
-        mnemos_dump()
-    elif "--mnemos-import" in args:
-        mnemos_recall()
-    # ... other CLI ops
-    else:
-        cprint("[yellow]CLI: No command. Use --help for options.[/yellow]")
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f: return json.load(f)
+    return {}
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
